@@ -1,0 +1,67 @@
+name: Build VyOS LTS
+on:
+  #check_run: 
+  workflow_dispatch:  # 手动触发
+    inputs:
+        branch_name:
+          description: 'VyOS build branch (equuleus=LTS)'
+          required: true
+          default: 'equuleus'
+          type: string
+  #schedule:
+  #  - cron: '0 2 * * *' # 每日凌晨2点自动编译
+
+jobs:
+  build:
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+    steps:
+      - name: Update apt & install build dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y git build-essential curl gpg apt-transport-https ca-certificates \
+            qemu-utils kpartx dosfstools squashfs-tools genisoimage debootstrap python3-pip \
+            python3-venv rsync bc bison flex libssl-dev libelf-dev cpio
+
+      - name: Checkout vyos-build
+        uses: actions/checkout@v6
+        with:
+          repository: vyos/vyos-build
+          ref: equuleus  # equuleus = VyOS 1.5 LTS；更换为对应LTS分支名，如 sagitta
+          path: vyos-build
+          submodules: true
+
+      - name: Configure git & prepare build env
+        run: |
+          cd vyos-build
+          git config --global user.name "github‑actions"
+          git config --global user.email "actions@github.com"
+          # 初始化python虚拟环境（vyos-build依赖）
+          python3 -m venv venv
+          source venv/bin/activate
+          #pip3 install -r requirements.txt
+          pwd
+
+      - name: Build VyOS LTS ISO
+        run: |
+          source venv/bin/activate
+          # build脚本编译LTS ISO，默认生成build/*.iso
+          ./build-vyos-image iso
+
+      - name: Upload ISO artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: vyos 1.5-lts-iso
+          path: vyos-build/build/*.iso
+          retention-days: 7
+
+      #- name: Create Github Release (only on workflow_dispatch manual trigger)
+      #  if: github.event_name == 'workflow_dispatch'
+      #  uses: softprops/action-gh-release@v2
+      #  with:
+      #    files: vyos-build/build/*.iso
+       #   tag_name: vyos-lts-${{ github.run_number }}
+      #    name: VyOS LTS Build ${{ github.run_number }}
+      #  env:
+      #    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
